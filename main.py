@@ -1,23 +1,34 @@
 import asyncio
-
 import os
+import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from threading import Thread
 
+# --- THE SMART DUMMY SERVER (RAILWAY KEEPALIVE) ---
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Cloud Scalper Online")
+        self.wfile.write(b"Bot is alive and hunting.")
+        
     def log_message(self, format, *args): 
-        pass # Keep logs clean
+        pass # Mutes the web server logs so they don't spam your trading terminal
 
 def start_server():
-    port = int(os.environ.get("PORT", 10000))
-    HTTPServer(('0.0.0.0', port), HealthCheck).serve_forever()
+    # Railway assigns a specific PORT dynamically. Locally, we default to 8080.
+    port = int(os.environ.get("PORT", 8080))
+    try:
+        server = HTTPServer(('0.0.0.0', port), HealthCheck)
+        server.serve_forever()
+    except OSError:
+        # If 8080 is blocked by another bot on your Mac, smoothly switch to 8081
+        fallback_port = 8081
+        server = HTTPServer(('0.0.0.0', fallback_port), HealthCheck)
+        server.serve_forever()
 
-Thread(target=start_server, daemon=True).start()
+# Start the dummy web server quietly in the background
+threading.Thread(target=start_server, daemon=True).start()
 
+# --- THE QUANTITATIVE ENGINE ---
 import ccxt.async_support as ccxt
 import pandas as pd
 from datetime import datetime
@@ -140,17 +151,4 @@ class QuantitativeTradingEngine:
                     try:
                         await self.run_cycle(symbol=asset)
                     except Exception as e:
-                        logger.error(f"Scan failed for {asset}: {e}")
-                    await asyncio.sleep(2)  # Micro-pause to prevent KuCoin API bans
-                
-                logger.info("Radar sweep complete. Sleeping for 5 minutes...")
-                await asyncio.sleep(300)
-        finally:
-            await self.exchange.close()
-
-if __name__ == "__main__":
-    engine = QuantitativeTradingEngine()
-    try:
-        asyncio.run(engine.start_infinite_loop())
-    except KeyboardInterrupt:
-        logger.warning("Engine shutdown signal received from terminal. Exiting safely.")
+                        logger.error(f"Scan failed for {asset}: {e
